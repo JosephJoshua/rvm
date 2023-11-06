@@ -1,14 +1,16 @@
 #pragma once
 
-#define WIFI_SSID "jsph273"
-#define WIFI_PASSWORD "halohihalohello"
-#define WIFI_RETRIES 20
+#define THING_NAME "ESP32CAM-Camera_Module"
+#define INITIAL_AP_PASSWORD "123456789"
 
-#define BACKEND_SERVER_HOSTNAME "172.20.10.3"
-#define BACKEND_SERVER_PORT 3123
-#define BACKEND_SERVER_TIMEOUT_MS 5 * 1000
+/**
+ * Configuration version number for this device.
+ * Note: should be modified when the config structure changes.
+ */
+#define CONFIG_VERSION "0.1"
+#define CONFIG_STRING_MAX_LENGTH 256
 
-#define IMAGE_CLASSIFICATION_ENDPOINT "/image-classification"
+#define WIFI_STATUS_PIN LED_BUILTIN
 
 #define IMAGE_UPLOAD_CHUNK_SIZE 1024
 
@@ -58,7 +60,7 @@ constexpr camera_config_t camera_settings = {
   .ledc_timer = LEDC_TIMER_1,
   .ledc_channel = LEDC_CHANNEL_1,
   .pixel_format = PIXFORMAT_JPEG,
-  .frame_size = FRAMESIZE_SVGA,
+  .frame_size = FRAMESIZE_VGA,
   .jpeg_quality = 12,
   .fb_count = 2,
   .fb_location = CAMERA_FB_IN_PSRAM,

@@ -1,10 +1,11 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WebServer.h>
-#include <HTTPClient.h>
+#include <IotWebConf.h>
+#include <IotWebConfTParameter.h>
 #include <soc/rtc_cntl_reg.h>
 #include <esp_camera.h>
 
+#include <http_utils.h>
 #include <camera_effects.h>
 #include <camera_wb_modes.h>
 #include <camera_gain_ceilings.h>
@@ -12,9 +13,46 @@
 
 extern "C" uint8_t temprature_sens_read();
 
+DNSServer dns_server;
+WebServer web_server(80);
 WiFiClient web_client;
 
-void connect_wifi();
+IotWebConf iot_web_conf(THING_NAME, &dns_server, &web_server, INITIAL_AP_PASSWORD, CONFIG_VERSION);
+
+iotwebconf::ParameterGroup backend_server_param_group = iotwebconf::ParameterGroup("backend_server_group", "Backend server");
+
+iotwebconf::TextTParameter<CONFIG_STRING_MAX_LENGTH> backend_server_hostname_param =
+  iotwebconf::Builder<iotwebconf::TextTParameter<CONFIG_STRING_MAX_LENGTH>>("backend_server_hostname").
+  label("Backend server hostname").
+  defaultValue("").
+  build();
+
+iotwebconf::IntTParameter<uint16_t> backend_server_port_param =
+  iotwebconf::Builder<iotwebconf::IntTParameter<uint16_t>>("backend_server_port").
+  label("Backend server port").
+  defaultValue(80).
+  min(0).
+  max(65535).
+  build();
+
+iotwebconf::IntTParameter<uint16_t> backend_server_timeout_param =
+  iotwebconf::Builder<iotwebconf::IntTParameter<uint16_t>>("backend_server_timeout").
+  label("Backend server timeout (ms)").
+  defaultValue(5 * 1000).
+  min(0).
+  build();
+
+iotwebconf::TextTParameter<CONFIG_STRING_MAX_LENGTH> image_classification_endpoint_param =
+  iotwebconf::Builder<iotwebconf::TextTParameter<CONFIG_STRING_MAX_LENGTH>>("image_classification_endpoint").
+  label("Image classification endpoint").
+  defaultValue("/image-classification").
+  build();
+
+// -- IotWebConf method declarations
+void setup_iot_web_conf();
+bool validate_config_form(iotwebconf::WebRequestWrapper *wrapper);
+void handle_root();
+
 void initialize_camera();
 void update_camera_settings();
 void upload_snapshot();
@@ -24,10 +62,6 @@ void setup()
 {
   // Disable brownout
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
-
-  // LED_BUILTIN (GPIO33) has inverted logic false => LED on
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(LED_FLASH, OUTPUT);
 
 #ifdef CORE_DEBUG_LEVEL
   Serial.begin(115200);
@@ -44,13 +78,20 @@ void setup()
     log_v("PSRAM found and initialized");
   }
 
-  connect_wifi();
+  setup_iot_web_conf();
   initialize_camera();
 }
 
 unsigned long lastFrame = millis();
 void loop()
 {
+  iot_web_conf.doLoop();
+
+  if (iot_web_conf.getState() != iotwebconf::NetworkState::OnLine)
+  {
+    return;
+  }
+
   if (millis() - lastFrame >= 5 * 1000)
   {
     upload_snapshot();
@@ -58,43 +99,24 @@ void loop()
   }
 }
 
-String read_http_response(WiFiClient *client)
-{
-  unsigned long startTime = millis();
-  while (!client->available())
-  {
-    if (millis() - startTime > BACKEND_SERVER_TIMEOUT_MS)
-    {
-      log_e("[HTTP] Response timed out");
-      client->stop();
-
-      return "";
-    }
-  }
-  
-  String response;
-  while (client->available())
-  {
-    response += client->readStringUntil('\r');
-  }
-  
-  client->stop();
-  return response;
-}
-
 void upload_snapshot()
 {
+  if (iot_web_conf.getState() != iotwebconf::NetworkState::OnLine)
+  {
+    return;
+  }
+
   camera_fb_t *snapshot = get_camera_snapshot();
   if (snapshot == nullptr)
   {
     return;
   }
 
-  log_v("Attempting to connect to backend server at %s:%d", BACKEND_SERVER_HOSTNAME, BACKEND_SERVER_PORT);
+  log_v("[Image Classification] Attempting to connect to backend server at %s:%d", backend_server_hostname_param.value(), backend_server_port_param.value());
 
-  if (web_client.connect(BACKEND_SERVER_HOSTNAME, BACKEND_SERVER_PORT))
+  if (web_client.connect(backend_server_hostname_param.value(), backend_server_port_param.value()))
   {
-    log_i("Uploading snapshot to backend server at %s", IMAGE_CLASSIFICATION_ENDPOINT);
+    log_i("[Image Classification] Uploading snapshot to backend server at %s", image_classification_endpoint_param.value());
 
     const char *head =
       "--camera_module"
@@ -114,8 +136,8 @@ void upload_snapshot()
     size_t extraLength = strlen(head) + strlen(tail);
     size_t totalLength = imageLength + extraLength;
 
-    web_client.println("POST " IMAGE_CLASSIFICATION_ENDPOINT " HTTP/1.1");
-    web_client.println("Host: " BACKEND_SERVER_HOSTNAME);
+    web_client.printf("POST %s HTTP/1.1\r\n", image_classification_endpoint_param.value());
+    web_client.printf("Host: %s\r\n", backend_server_hostname_param.value());
     web_client.println("Content-Length: " + String(totalLength));
     web_client.println("Content-Type: multipart/form-data; boundary=camera_module");
     web_client.println("Accept: text/plain");
@@ -142,70 +164,42 @@ void upload_snapshot()
     web_client.print(tail);
     esp_camera_fb_return(snapshot);
 
-    String response = read_http_response(&web_client);
+    String response = read_http_response(&web_client, backend_server_timeout_param.value());
     Serial.println(response.c_str());
-    log_i("Response from server: %s", response.c_str());
+    log_i("[Image Classification] Response from server: %s", response.c_str());
   }
   else
   {
-    log_e("Failed to connect to backend server at %s:%s", BACKEND_SERVER_HOSTNAME, BACKEND_SERVER_PORT);
+    log_e("[Image Classification] Failed to connect to backend server at %s:%s", backend_server_hostname_param.value(), backend_server_port_param.value());
     esp_camera_fb_return(snapshot);
   }
 }
 
-void connect_wifi()
-{
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  
-  log_v("Attempting to connect to Wi-Fi network: %s", WIFI_SSID);
-  
-  int tries = 0;
-  
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    Serial.print(".");
-    tries++;
-    
-    if (tries > WIFI_RETRIES)
-    {
-      Serial.println();
-
-      log_e("Failed to connect to Wi-Fi network. Restarting..");
-      delay(1000);
-      ESP.restart();
-      
-      return;
-    }
-
-    delay(500);
-  }
-  
-  log_i("Connected to Wi-Fi network: %s", WiFi.SSID());
-  log_i("Local IP address: %s", WiFi.localIP().toString().c_str());
-}
-
 void initialize_camera()
 {
-  log_v("initialize_camera");
+  log_v("[Camera] Initializing..");
   esp_err_t err = esp_camera_init(&camera_settings);
 
   if (err != ESP_OK)
   {
-    log_e("Camera initialization failed with error code 0x%0x", err);
+    log_e("[Camera] Initialization failed with error code 0x%0x", err);
     delay(1000);
     ESP.restart();
   }
   
   update_camera_settings();
+  
+  log_v("[Camera] Ready.");
 }
 
 void update_camera_settings()
 {
+  log_v("[Camera] Updating settings..");
+
   auto camera = esp_camera_sensor_get();
   if (camera == nullptr)
   {
-    log_e("Unable to get camera sensor");
+    log_e("[Camera] Failed to get camera sensor instance");
     return;
   }
 
@@ -231,31 +225,143 @@ void update_camera_settings()
   camera->set_vflip(camera, DEFAULT_VERTICAL_MIRROR);
   camera->set_dcw(camera, DEFAULT_DCW);
   camera->set_colorbar(camera, DEFAULT_COLORBAR);
+
+  log_i("[Camera] Settings updated.");
 }
 
 camera_fb_t *get_camera_snapshot()
 {
-  log_v("get_camera_snapshot");
+  log_v("[Camera] Getting snapshot..");
 
   camera_fb_t *fb = nullptr;
-
-  // Remove old images stored in the frame buffer
-  // int frame_buffers = camera_settings.fb_count;
-  // while (frame_buffers--) {
-  //   fb = esp_camera_fb_get();
-  //   if (fb == nullptr) break;
-  //
-  //   esp_camera_fb_return(fb);
-  //   fb = nullptr;
-  // }
   
   fb = esp_camera_fb_get();
   if (fb == nullptr)
   {
-    log_e("Unable to obtain frame buffer from the camera");
+    log_e("[Camera] Failed to obtain frame buffer from the camera");
     delay(1000);
     ESP.restart();
   }
-
+  
+  log_i("[Camera] Snapshot obtained. Size: %zu bytes", fb->len);
   return fb;
+}
+
+/**
+ * -- IotWebConf method definitions
+ */
+
+void setup_iot_web_conf()
+{
+  log_v("[IotWebConf] Initializing.."); 
+  
+  backend_server_param_group.addItem(&backend_server_hostname_param);
+  backend_server_param_group.addItem(&backend_server_port_param);
+  backend_server_param_group.addItem(&backend_server_timeout_param);
+  backend_server_param_group.addItem(&image_classification_endpoint_param);
+
+  iot_web_conf.setStatusPin(WIFI_STATUS_PIN);
+  iot_web_conf.addParameterGroup(&backend_server_param_group);
+  iot_web_conf.setFormValidator(&validate_config_form);
+  iot_web_conf.getApTimeoutParameter()->visible = true;
+  
+  iot_web_conf.init();
+  
+  log_v("[IotWebConf] Setting up web server.."); 
+  
+  web_server.on("/", handle_root);
+  web_server.on("/config", []{ iot_web_conf.handleConfig(); });
+  web_server.onNotFound([]{ iot_web_conf.handleNotFound(); });
+  
+  log_i("[IotWebConf] Ready. Wi-Fi SSID: %s", iot_web_conf.getThingName());
+}
+
+bool validate_config_form(iotwebconf::WebRequestWrapper *wrapper)
+{
+  log_v("[IotWebConf] Validating config form..");
+
+  bool valid = true;
+
+  String backend_server_hostname = wrapper->arg(backend_server_hostname_param.getId());
+  String backend_server_port = wrapper->arg(backend_server_port_param.getId());
+  String backend_server_timeout = wrapper->arg(backend_server_timeout_param.getId());
+  String image_classification_endpoint = wrapper->arg(image_classification_endpoint_param.getId());
+
+  backend_server_hostname.trim();
+  image_classification_endpoint.trim();
+
+  if (backend_server_hostname.length() == 0)
+  {
+    backend_server_hostname_param.errorMessage = "Backend server hostname is required";
+    valid = false;
+  }
+  
+  if (backend_server_port.length() == 0)
+  {
+    backend_server_port_param.errorMessage = "Backend server port is required";
+    valid = false;
+  }
+  
+  if (backend_server_timeout.length() == 0)
+  {
+    backend_server_timeout_param.errorMessage = "Backend server timeout is required";
+    valid = false;
+  }
+
+  if (image_classification_endpoint.length() == 0)
+  {
+    image_classification_endpoint_param.errorMessage = "Image classification endpoint is required";
+    valid = false;
+  }
+
+  log_i("[IotWebConf] Config form validation %s.", valid ? "passed" : "failed");
+  return valid;
+}
+
+void handle_root()
+{
+  log_i("[WebServer] Handle /");
+
+  if (iot_web_conf.handleCaptivePortal())
+  {
+    return;
+  }
+  
+  String s = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/>";
+
+  s += 
+    "<title>ESP32CAM/Camera Module Configuration</title></head>"
+    "<body>"
+    "<ul>"
+    "<li>Backend server hostname: ";
+  
+  s += backend_server_hostname_param.value();
+
+  s +=
+    "</li>"
+    "<li>Backend server port: ";
+
+  s += String(backend_server_port_param.value());
+
+  s +=
+    "</li>"
+    "<li>Backend server timeout (ms): ";
+
+  s += String(backend_server_timeout_param.value());
+
+  s +=
+    "</li>"
+    "<li>Image classification endpoint: ";
+
+  s += image_classification_endpoint_param.value();
+  
+  s +=
+    "</li>"
+    "</ul>"
+    "Go <a href='/config'>here</a> to change values."
+    "</body>"
+    "</html>"
+    "\n";
+  
+  web_server.send(200, "text/html", s.c_str());
 }
