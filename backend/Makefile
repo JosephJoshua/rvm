@@ -4,7 +4,7 @@ MAIN_FILE = cmd/backend/main.go
 .PHONY: all run/dev build build/prod clean dep vet tidy lint
 
 run/dev: build
-	APP_ENV=development ./${BINARY_PATH}
+	CGO_ENABLED=1 APP_ENV=development ./${BINARY_PATH}
 
 build:
 	go build -o ${BINARY_PATH} ${MAIN_FILE}
