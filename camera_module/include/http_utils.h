@@ -4,24 +4,24 @@
 
 String read_http_response(WiFiClient *client, int timeout_ms)
 {
-  unsigned long startTime = millis();
-  while (!client->available())
-  {
-    if (millis() - startTime > timeout_ms)
+    unsigned long startTime = millis();
+    while (!client->available())
     {
-      log_e("[HTTP] Response timed out");
-      client->stop();
+        if (millis() - startTime > timeout_ms)
+        {
+            log_e("[HTTP] Response timed out");
+            client->stop();
 
-      return "";
+            return "";
+        }
     }
-  }
-  
-  String response;
-  while (client->available())
-  {
-    response += client->readStringUntil('\r');
-  }
-  
-  client->stop();
-  return response;
+
+    String response;
+    while (client->available())
+    {
+        response += client->readStringUntil('\r');
+    }
+
+    client->stop();
+    return response;
 }
