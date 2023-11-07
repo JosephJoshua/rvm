@@ -20,24 +20,22 @@ func NewDB(dbPath string) (*sql.DB, error) {
 func MigrateDB(db *sql.DB) error {
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
-			user_id INTEGER PRIMARY KEY NOT NULL,
-			auth_uid VARCHAR(255) UNIQUE NOT NULL,
+			user_id VARCHAR(255) PRIMARY KEY NOT NULL,
 			full_name TEXT NOT NULL,
 			email TEXT NOT NULL,
 			birth_date DATE NOT NULL
-		);
+		) WITHOUT ROWID;
 	`); err != nil {
 		return fmt.Errorf("Migrate(): failed to migrate users: %w", err)
 	}
 
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS transactions (
-			transaction_id INTEGER PRIMARY KEY NOT NULL,
-			transaction_code VARCHAR(255) UNIQUE NOT NULL,
+			transaction_id VARCHAR(255) PRIMARY KEY NOT NULL,
 			user_id INTEGER NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE ON UPDATE CASCADE
-		);
+		) WITHOUT ROWID;
 	`); err != nil {
 		return fmt.Errorf("Migrate(): failed to migrate transactions: %w", err)
 	}
@@ -63,6 +61,19 @@ func MigrateDB(db *sql.DB) error {
 		);
 	`); err != nil {
 		return fmt.Errorf("Migrate(): failed to migrate transactions: %w", err)
+	}
+
+	return nil
+}
+
+func SeedDB(db *sql.DB) error {
+	if _, err := db.Exec(`
+		INSERT INTO
+			items (name, points)
+		VALUES
+			('PET bottle', 10)
+	`); err != nil {
+		return fmt.Errorf("SeedDB(): failed to seed items: %w", err)
 	}
 
 	return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"flag"
 	"log/slog"
 	"net/http"
 	"os"
@@ -27,23 +28,47 @@ const GracefulTimeoutSecs = 30
 func main() {
 	loadDotEnv()
 
+	seedFlag := flag.Bool("seed", false, "seeds the database with initial data")
+	flag.Parse()
+
+	slog.Default().Info("initializing db..")
+
 	dbHandle, err := db.NewDB(env.GetDBPath())
 	if err != nil {
 		slog.Default().Error("failed to initialize db", logging.ErrAttr(err))
 	}
 
+	slog.Default().Info("initialized db")
 	defer dbHandle.Close()
 
+	slog.Default().Info("migrating db schema..")
 	if err = db.MigrateDB(dbHandle); err != nil {
 		slog.Default().Error("failed to migrate db", logging.ErrAttr(err))
 	}
 
-	server := http.Server{
+	slog.Default().Info("migrated db schema")
+
+	if *seedFlag {
+		slog.Default().Info("seeding db..")
+
+		if err = db.SeedDB(dbHandle); err != nil {
+			slog.Default().Error("failed to seed db", logging.ErrAttr(err))
+		} else {
+			slog.Default().Info("seeded db with initial data")
+		}
+	}
+
+	server := &http.Server{
 		Handler:           getRouter(dbHandle),
 		Addr:              "0.0.0.0:3123",
 		ReadHeaderTimeout: ReadHeaderTimeoutSecs * time.Second,
 	}
 
+	slog.Default().Info("running server..", slog.String("addr", server.Addr))
+	runServer(server)
+}
+
+func runServer(server *http.Server) {
 	serverCtx, stopServerCtx := context.WithCancel(context.Background())
 
 	sig := make(chan os.Signal, 1)
@@ -63,14 +88,14 @@ func main() {
 			}
 		}()
 
-		if err = server.Shutdown(shutdownCtx); err != nil {
+		if err := server.Shutdown(shutdownCtx); err != nil {
 			slog.Default().Error("failed to shutdown server", logging.ErrAttr(err))
 		}
 
 		stopServerCtx()
 	}()
 
-	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Default().Error("failed to start server", logging.ErrAttr(err))
 	}
 
@@ -86,7 +111,7 @@ func getRouter(dbHandle *sql.DB) http.Handler {
 
 	transactionService := transaction.NewService(
 		transaction.NewSQLRepository(dbHandle),
-		transaction.NewUUIDCodeGenerator(),
+		transaction.NewUUIDIDGenerator(),
 	)
 
 	transactionHandler := transaction.NewHTTPHandler(transactionService)
