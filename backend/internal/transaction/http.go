@@ -17,6 +17,12 @@ type HTTPHandler struct {
 	s *Service
 }
 
+// NewHTTPHandler creates a new transaction HTTP handler.
+//   - POST /transactions - starts a new transaction and returns the transaction code.
+//   - POST /transactions/{transactionID}/items - adds an item to the transaction.
+//     item_id is a form value or query parameter.
+//   - DELETE /transactions/{transactionID} - ends the transaction and assigns the user to the transaction.
+//     user_id is a form value or query parameter.
 func NewHTTPHandler(s *Service) *HTTPHandler {
 	handler := &HTTPHandler{s: s}
 
@@ -24,6 +30,7 @@ func NewHTTPHandler(s *Service) *HTTPHandler {
 
 	r.Post("/transactions", http.HandlerFunc(handler.startTransaction))
 	r.Post("/transactions/{transactionID}/items", http.HandlerFunc(handler.addItemToTransaction))
+	r.Delete("/transactions/{transactionID}", http.HandlerFunc(handler.endTransactionAndAssignUser))
 
 	handler.Handler = r
 	return handler
@@ -59,6 +66,16 @@ func (h *HTTPHandler) addItemToTransaction(w http.ResponseWriter, r *http.Reques
 
 	w.Header().Add("Content-Type", "text/plain")
 
+	if itemIDStr == "" {
+		oplog.Error("item_id is empty")
+		w.WriteHeader(http.StatusBadRequest)
+
+		_, err := w.Write([]byte("item_id is required"))
+		if err != nil {
+			oplog.Error("failed to write response", logging.ErrAttr(err))
+		}
+	}
+
 	itemID, err := strconv.Atoi(itemIDStr)
 	if err != nil {
 		oplog.Error("failed to convert item_id to int", logging.ErrAttr(err))
@@ -91,7 +108,12 @@ func (h *HTTPHandler) addItemToTransaction(w http.ResponseWriter, r *http.Reques
 
 		if errors.Is(err, ErrItemDoesNotExist) {
 			oplog.Error("item not found", slog.Int("item_id", itemID))
-			w.WriteHeader(http.StatusNotFound)
+			w.WriteHeader(http.StatusBadRequest)
+
+			_, err = w.Write([]byte("item not found"))
+			if err != nil {
+				oplog.Error("failed to write response", logging.ErrAttr(err))
+			}
 
 			return
 		}
@@ -101,6 +123,66 @@ func (h *HTTPHandler) addItemToTransaction(w http.ResponseWriter, r *http.Reques
 			logging.ErrAttr(err),
 			slog.String("transaction_id", transactionID.String()),
 			slog.Int("item_id", itemID),
+		)
+
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *HTTPHandler) endTransactionAndAssignUser(w http.ResponseWriter, r *http.Request) {
+	oplog := httplog.LogEntry(r.Context())
+
+	transactionIDStr := chi.URLParam(r, "transactionID")
+	userID := r.FormValue("user_id")
+
+	if userID == "" {
+		oplog.Error("user_id is empty")
+		w.WriteHeader(http.StatusBadRequest)
+
+		_, err := w.Write([]byte("user_id is required"))
+		if err != nil {
+			oplog.Error("failed to write response", logging.ErrAttr(err))
+		}
+
+		return
+	}
+
+	transactionID, err := domain.NewTransactionID(transactionIDStr)
+	if err != nil {
+		oplog.Error("failed to create transaction id", logging.ErrAttr(err))
+		w.WriteHeader(http.StatusNotFound)
+
+		return
+	}
+
+	if err = h.s.EndTransactionAndAssignUser(transactionID, userID); err != nil {
+		if errors.Is(err, ErrTransactionDoesNotExist) {
+			oplog.Error("transaction not found", slog.String("transaction_id", transactionID.String()))
+			w.WriteHeader(http.StatusNotFound)
+
+			return
+		}
+
+		if errors.Is(err, ErrUserDoesNotExist) {
+			oplog.Error("user not found", slog.String("user_id", userID))
+			w.WriteHeader(http.StatusBadRequest)
+
+			_, err = w.Write([]byte("user not found"))
+			if err != nil {
+				oplog.Error("failed to write response", logging.ErrAttr(err))
+			}
+
+			return
+		}
+
+		oplog.Error(
+			"failed to end transaction",
+			logging.ErrAttr(err),
+			slog.String("transaction_id", transactionID.String()),
+			slog.String("user_id", userID),
 		)
 
 		w.WriteHeader(http.StatusInternalServerError)

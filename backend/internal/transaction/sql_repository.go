@@ -65,6 +65,30 @@ func (tr *SQLRepository) DoesItemExist(itemID int) (bool, error) {
 	return count > 0, nil
 }
 
+func (tr *SQLRepository) DoesUserExist(userID string) (bool, error) {
+	stmt, err := tr.db.Prepare(`
+		SELECT
+			COUNT(*)
+		FROM
+			users
+		WHERE
+			user_id = ?
+	`)
+
+	if err != nil {
+		return false, fmt.Errorf("DoesUserExist(): failed to prepare statement: %w", err)
+	}
+
+	defer stmt.Close()
+
+	var count int
+	if err = stmt.QueryRow(userID).Scan(&count); err != nil {
+		return false, fmt.Errorf("DoesUserExist(): failed to execute statement: %w", err)
+	}
+
+	return count > 0, nil
+}
+
 func (tr *SQLRepository) StartTransaction(id domain.TransactionID) error {
 	stmt, err := tr.db.Prepare(`
 		INSERT INTO
@@ -102,6 +126,29 @@ func (tr *SQLRepository) AddItemToTransaction(transactionID domain.TransactionID
 
 	if _, err = stmt.Exec(transactionID, itemID); err != nil {
 		return fmt.Errorf("AddItemToTransaction(): failed to execute statement: %w", err)
+	}
+
+	return nil
+}
+
+func (tr *SQLRepository) EndTransactionAndAssignUser(transactionID domain.TransactionID, userID string) error {
+	stmt, err := tr.db.Prepare(`
+		UPDATE
+			transactions
+		SET
+			user_id = ?
+		WHERE
+			transaction_id = ?
+	`)
+
+	if err != nil {
+		return fmt.Errorf("EndTransactionAndAssignUser(): failed to prepare statement: %w", err)
+	}
+
+	defer stmt.Close()
+
+	if _, err = stmt.Exec(userID, transactionID); err != nil {
+		return fmt.Errorf("EndTransactionAndAssignUser(): failed to execute statement: %w", err)
 	}
 
 	return nil
