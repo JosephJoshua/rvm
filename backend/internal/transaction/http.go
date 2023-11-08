@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/JosephJoshua/rvm/backend/internal/httputils"
 	"github.com/JosephJoshua/rvm/backend/internal/logging"
 	"github.com/JosephJoshua/rvm/backend/internal/transaction/domain"
 	"github.com/go-chi/chi/v5"
@@ -28,15 +29,15 @@ func NewHTTPHandler(s *Service) *HTTPHandler {
 
 	r := chi.NewRouter()
 
-	r.Post("/transactions", http.HandlerFunc(handler.startTransaction))
-	r.Post("/transactions/{transactionID}/items", http.HandlerFunc(handler.addItemToTransaction))
-	r.Delete("/transactions/{transactionID}", http.HandlerFunc(handler.endTransactionAndAssignUser))
+	r.Post("/transactions", httputils.HandlerFunc(handler.startTransaction))
+	r.Post("/transactions/{transactionID}/items", httputils.HandlerFunc(handler.addItemToTransaction))
+	r.Delete("/transactions/{transactionID}", httputils.HandlerFunc(handler.endTransactionAndAssignUser))
 
 	handler.Handler = r
 	return handler
 }
 
-func (h *HTTPHandler) startTransaction(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) startTransaction(w httputils.ResponseWriter, r *http.Request) {
 	oplog := httplog.LogEntry(r.Context())
 
 	code, err := h.s.StartTransaction()
@@ -47,33 +48,21 @@ func (h *HTTPHandler) startTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Add("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-
-	if _, err = w.Write([]byte(code)); err != nil {
-		oplog.Error("failed to write response", logging.ErrAttr(err))
-		w.WriteHeader(http.StatusInternalServerError)
-
-		return
-	}
+	w.TryWrite(&oplog, []byte(code))
 }
 
-func (h *HTTPHandler) addItemToTransaction(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) addItemToTransaction(w httputils.ResponseWriter, r *http.Request) {
 	oplog := httplog.LogEntry(r.Context())
 
 	transactionIDStr := chi.URLParam(r, "transactionID")
 	itemIDStr := r.FormValue("item_id")
 
-	w.Header().Add("Content-Type", "text/plain")
-
 	if itemIDStr == "" {
 		oplog.Error("item_id is empty")
-		w.WriteHeader(http.StatusBadRequest)
 
-		_, err := w.Write([]byte("item_id is required"))
-		if err != nil {
-			oplog.Error("failed to write response", logging.ErrAttr(err))
-		}
+		w.WriteHeader(http.StatusBadRequest)
+		w.TryWrite(&oplog, []byte("item_id is required"))
 	}
 
 	itemID, err := strconv.Atoi(itemIDStr)
@@ -81,11 +70,7 @@ func (h *HTTPHandler) addItemToTransaction(w http.ResponseWriter, r *http.Reques
 		oplog.Error("failed to convert item_id to int", logging.ErrAttr(err))
 
 		w.WriteHeader(http.StatusBadRequest)
-
-		_, err = w.Write([]byte("item_id has to be an integer"))
-		if err != nil {
-			oplog.Error("failed to write response", logging.ErrAttr(err))
-		}
+		w.TryWrite(&oplog, []byte("item_id has to be an integer"))
 
 		return
 	}
@@ -108,12 +93,9 @@ func (h *HTTPHandler) addItemToTransaction(w http.ResponseWriter, r *http.Reques
 
 		if errors.Is(err, ErrItemDoesNotExist) {
 			oplog.Error("item not found", slog.Int("item_id", itemID))
-			w.WriteHeader(http.StatusBadRequest)
 
-			_, err = w.Write([]byte("item not found"))
-			if err != nil {
-				oplog.Error("failed to write response", logging.ErrAttr(err))
-			}
+			w.WriteHeader(http.StatusBadRequest)
+			w.TryWrite(&oplog, []byte("item not found"))
 
 			return
 		}
@@ -132,7 +114,7 @@ func (h *HTTPHandler) addItemToTransaction(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *HTTPHandler) endTransactionAndAssignUser(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) endTransactionAndAssignUser(w httputils.ResponseWriter, r *http.Request) {
 	oplog := httplog.LogEntry(r.Context())
 
 	transactionIDStr := chi.URLParam(r, "transactionID")
@@ -140,12 +122,9 @@ func (h *HTTPHandler) endTransactionAndAssignUser(w http.ResponseWriter, r *http
 
 	if userID == "" {
 		oplog.Error("user_id is empty")
-		w.WriteHeader(http.StatusBadRequest)
 
-		_, err := w.Write([]byte("user_id is required"))
-		if err != nil {
-			oplog.Error("failed to write response", logging.ErrAttr(err))
-		}
+		w.WriteHeader(http.StatusBadRequest)
+		w.TryWrite(&oplog, []byte("user_id is required"))
 
 		return
 	}
@@ -168,12 +147,9 @@ func (h *HTTPHandler) endTransactionAndAssignUser(w http.ResponseWriter, r *http
 
 		if errors.Is(err, ErrUserDoesNotExist) {
 			oplog.Error("user not found", slog.String("user_id", userID))
-			w.WriteHeader(http.StatusBadRequest)
 
-			_, err = w.Write([]byte("user not found"))
-			if err != nil {
-				oplog.Error("failed to write response", logging.ErrAttr(err))
-			}
+			w.WriteHeader(http.StatusBadRequest)
+			w.TryWrite(&oplog, []byte("user not found"))
 
 			return
 		}

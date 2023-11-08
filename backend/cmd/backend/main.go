@@ -106,8 +106,11 @@ func getRouter(dbHandle *sql.DB) http.Handler {
 	logger := logging.NewRequestLogger(env.GetAppEnv())
 
 	r := chi.NewRouter()
+
 	r.Use(httplog.RequestLogger(logger, []string{"/ping"}))
 	r.Use(middleware.Heartbeat("/ping"))
+	r.Use(middleware.AllowContentType("text/plain"))
+	r.Use(middleware.SetHeader("Content-Type", "text/plain"))
 
 	transactionService := transaction.NewService(
 		transaction.NewSQLRepository(dbHandle),
