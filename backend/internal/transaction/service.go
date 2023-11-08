@@ -2,6 +2,7 @@ package transaction
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/JosephJoshua/rvm/backend/internal/transaction/domain"
 )
@@ -27,7 +28,7 @@ func (s *Service) StartTransaction() (domain.TransactionID, error) {
 		return "", fmt.Errorf("StartTransaction(): failed to generate id: %w", err)
 	}
 
-	if err = s.r.StartTransaction(id); err != nil {
+	if err = s.r.StartTransaction(id, time.Now()); err != nil {
 		return "", fmt.Errorf("StartTransaction(): failed to create transaction: %w", err)
 	}
 
@@ -53,7 +54,7 @@ func (s *Service) AddItemToTransaction(transactionID domain.TransactionID, itemI
 		return fmt.Errorf("AddItemToTransaction(): %w with id %v", ErrItemDoesNotExist, itemID)
 	}
 
-	if err = s.r.AddItemToTransaction(transactionID, itemID); err != nil {
+	if err = s.r.AddItemToTransaction(transactionID, itemID, time.Now()); err != nil {
 		return fmt.Errorf("AddItemToTransaction(): failed to add item to transaction: %w", err)
 	}
 

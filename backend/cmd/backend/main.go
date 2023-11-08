@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"flag"
 	"log/slog"
@@ -12,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/JosephJoshua/rvm/backend/internal/api_token"
 	"github.com/JosephJoshua/rvm/backend/internal/db"
 	"github.com/JosephJoshua/rvm/backend/internal/env"
 	"github.com/JosephJoshua/rvm/backend/internal/logging"
@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httplog/v2"
+	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 )
 
@@ -102,14 +103,13 @@ func runServer(server *http.Server) {
 	<-serverCtx.Done()
 }
 
-func getRouter(dbHandle *sql.DB) http.Handler {
+func getRouter(dbHandle *sqlx.DB) http.Handler {
 	logger := logging.NewRequestLogger(env.GetAppEnv())
 
 	r := chi.NewRouter()
 
 	r.Use(httplog.RequestLogger(logger, []string{"/ping"}))
 	r.Use(middleware.Heartbeat("/ping"))
-	r.Use(middleware.AllowContentType("text/plain"))
 	r.Use(middleware.SetHeader("Content-Type", "text/plain"))
 
 	transactionService := transaction.NewService(
@@ -117,9 +117,16 @@ func getRouter(dbHandle *sql.DB) http.Handler {
 		transaction.NewUUIDIDGenerator(),
 	)
 
+	apiTokenService := api_token.NewService(
+		api_token.NewSQLRepository(dbHandle),
+	)
+
 	transactionHandler := transaction.NewHTTPHandler(transactionService)
 
-	r.Mount("/", transactionHandler)
+	r.Group(func(r chi.Router) {
+		r.Use(api_token.ValidTokenMiddleware(apiTokenService))
+		r.Mount("/", transactionHandler)
+	})
 
 	return r
 }

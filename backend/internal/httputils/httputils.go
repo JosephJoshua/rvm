@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-func HandlerFunc(fn func (ResponseWriter, *http.Request)) http.HandlerFunc {
+func HandlerFunc(fn func(ResponseWriter, *http.Request)) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nw := newResponseWriter(w)
 		fn(nw, r)
