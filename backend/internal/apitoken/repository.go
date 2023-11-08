@@ -1,9 +1,9 @@
-package api_token
+package apitoken
 
 import (
 	"errors"
 
-	"github.com/JosephJoshua/rvm/backend/internal/api_token/domain"
+	"github.com/JosephJoshua/rvm/backend/internal/apitoken/domain"
 )
 
 var (

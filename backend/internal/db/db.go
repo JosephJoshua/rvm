@@ -3,8 +3,9 @@ package db
 import (
 	"fmt"
 
-	// sqlite3 driver.
 	"github.com/jmoiron/sqlx"
+
+	// sqlite3 driver.
 	_ "github.com/mattn/go-sqlite3"
 )
 

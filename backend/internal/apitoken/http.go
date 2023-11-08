@@ -1,4 +1,4 @@
-package api_token
+package apitoken
 
 import (
 	"net/http"

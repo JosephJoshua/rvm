@@ -1,4 +1,4 @@
-package api_token
+package apitoken
 
 import (
 	"database/sql"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/JosephJoshua/rvm/backend/internal/api_token/domain"
+	"github.com/JosephJoshua/rvm/backend/internal/apitoken/domain"
 	"github.com/jmoiron/sqlx"
 )
 

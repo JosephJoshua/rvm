@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/JosephJoshua/rvm/backend/internal/api_token"
+	"github.com/JosephJoshua/rvm/backend/internal/apitoken"
 	"github.com/JosephJoshua/rvm/backend/internal/db"
 	"github.com/JosephJoshua/rvm/backend/internal/env"
 	"github.com/JosephJoshua/rvm/backend/internal/logging"
@@ -117,14 +117,14 @@ func getRouter(dbHandle *sqlx.DB) http.Handler {
 		transaction.NewUUIDIDGenerator(),
 	)
 
-	apiTokenService := api_token.NewService(
-		api_token.NewSQLRepository(dbHandle),
+	apiTokenService := apitoken.NewService(
+		apitoken.NewSQLRepository(dbHandle),
 	)
 
 	transactionHandler := transaction.NewHTTPHandler(transactionService)
 
 	r.Group(func(r chi.Router) {
-		r.Use(api_token.ValidTokenMiddleware(apiTokenService))
+		r.Use(apitoken.ValidTokenMiddleware(apiTokenService))
 		r.Mount("/", transactionHandler)
 	})
 

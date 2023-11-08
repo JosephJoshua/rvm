@@ -79,7 +79,11 @@ func (tr *SQLRepository) StartTransaction(id domain.TransactionID, createdAt tim
 	return nil
 }
 
-func (tr *SQLRepository) AddItemToTransaction(transactionID domain.TransactionID, itemID int, createdAt time.Time) error {
+func (tr *SQLRepository) AddItemToTransaction(
+	transactionID domain.TransactionID,
+	itemID int,
+	createdAt time.Time,
+) error {
 	if _, err := tr.db.Exec(`
 		INSERT INTO
 			transaction_items (transaction_id, item_id, created_at)
