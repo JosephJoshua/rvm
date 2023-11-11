@@ -1,21 +1,34 @@
 #pragma once
 
-#define THING_NAME "ESP32CAM-Camera_Module"
+#define DATA_CAPTURE_MODE
+
+/**
+ * The side of the object this camera module is capturing.
+ * Possible values: "front", "top"
+ */
+#define CAMERA_SIDE "top"
+
+#define THING_NAME "ESP32CAM-Camera_Module-Top"
 #define INITIAL_AP_PASSWORD "123456789"
 
 /**
  * Configuration version number for this device.
  * Note: should be modified when the config structure changes.
  */
-#define CONFIG_VERSION "0.1"
+#define CONFIG_VERSION "0.2"
 #define CONFIG_STRING_MAX_LENGTH 256
 
 #define WIFI_STATUS_PIN LED_BUILTIN
 
 #define IMAGE_UPLOAD_CHUNK_SIZE 1024
 
+#define DATA_CAPTURE_MAX_ATTEMPTS 5
+#define MQTT_CONNECTION_ATTEMPT_INTERVAL_MS 1000
+#define MQTT_CAPTURE_REQUEST_TOPIC "capture/request"
+#define MQTT_CAPTURE_COMPLETE_TOPIC "capture/complete"
+
 #define DEFAULT_BRIGHTNESS    0
-#define DEFAULT_CONTRAST    0
+#define DEFAULT_CONTRAST      0
 #define DEFAULT_SATURATION    0
 #define DEFAULT_EFFECT    "Normal"
 #define DEFAULT_WHITE_BALANCE true
