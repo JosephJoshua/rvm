@@ -110,3 +110,19 @@ func (tr *SQLRepository) EndTransactionAndAssignUser(transactionID domain.Transa
 
 	return nil
 }
+
+func (tr *SQLRepository) GetTransactionItemCount(transactionID domain.TransactionID) (int, error) {
+	var count int
+	if err := tr.db.Get(&count, `
+		SELECT
+			COUNT(*)
+		FROM
+			transaction_items
+		WHERE
+			transaction_id = ?
+	`, transactionID); err != nil {
+		return 0, fmt.Errorf("GetTransactionItemCount(): failed to execute query: %w", err)
+	}
+
+	return count, nil
+}

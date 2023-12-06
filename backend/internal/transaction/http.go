@@ -83,7 +83,8 @@ func (h *HTTPHandler) addItemToTransaction(w httputils.ResponseWriter, r *http.R
 		return
 	}
 
-	if err = h.s.AddItemToTransaction(transactionID, itemID); err != nil {
+	c, err := h.s.AddItemToTransaction(transactionID, itemID)
+	if err != nil {
 		if errors.Is(err, ErrTransactionDoesNotExist) {
 			oplog.Error("transaction not found", slog.String("transaction_id", transactionID.String()))
 			w.WriteHeader(http.StatusNotFound)
@@ -111,7 +112,7 @@ func (h *HTTPHandler) addItemToTransaction(w httputils.ResponseWriter, r *http.R
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	w.TryWrite(&oplog, []byte(strconv.Itoa(c)))
 }
 
 func (h *HTTPHandler) endTransactionAndAssignUser(w httputils.ResponseWriter, r *http.Request) {

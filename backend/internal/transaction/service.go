@@ -35,30 +35,35 @@ func (s *Service) StartTransaction() (domain.TransactionID, error) {
 	return id, nil
 }
 
-func (s *Service) AddItemToTransaction(transactionID domain.TransactionID, itemID int) error {
+func (s *Service) AddItemToTransaction(transactionID domain.TransactionID, itemID int) (int, error) {
 	ok, err := s.r.DoesTransactionExist(transactionID)
 	if err != nil {
-		return fmt.Errorf("AddItemToTransaction(): failed to check transaction existence: %w", err)
+		return 0, fmt.Errorf("AddItemToTransaction(): failed to check transaction existence: %w", err)
 	}
 
 	if !ok {
-		return fmt.Errorf("AddItemToTransaction(): %w with id %s", ErrTransactionDoesNotExist, transactionID.String())
+		return 0, fmt.Errorf("AddItemToTransaction(): %w with id %s", ErrTransactionDoesNotExist, transactionID.String())
 	}
 
 	ok, err = s.r.DoesItemExist(itemID)
 	if err != nil {
-		return fmt.Errorf("AddItemToTransaction(): failed to check item existence: %w", err)
+		return 0, fmt.Errorf("AddItemToTransaction(): failed to check item existence: %w", err)
 	}
 
 	if !ok {
-		return fmt.Errorf("AddItemToTransaction(): %w with id %v", ErrItemDoesNotExist, itemID)
+		return 0, fmt.Errorf("AddItemToTransaction(): %w with id %v", ErrItemDoesNotExist, itemID)
 	}
 
 	if err = s.r.AddItemToTransaction(transactionID, itemID, time.Now()); err != nil {
-		return fmt.Errorf("AddItemToTransaction(): failed to add item to transaction: %w", err)
+		return 0, fmt.Errorf("AddItemToTransaction(): failed to add item to transaction: %w", err)
 	}
 
-	return nil
+	c, err := s.r.GetTransactionItemCount(transactionID)
+	if err != nil {
+		return 0, fmt.Errorf("AddItemToTransaction(): failed to get transaction item count: %w", err)
+	}
+
+	return c, nil
 }
 
 func (s *Service) EndTransactionAndAssignUser(transactionID domain.TransactionID, userID string) error {

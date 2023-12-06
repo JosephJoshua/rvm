@@ -13,4 +13,5 @@ type Repository interface {
 	StartTransaction(id domain.TransactionID, createdAt time.Time) error
 	AddItemToTransaction(transactionID domain.TransactionID, itemID int, createdAt time.Time) error
 	EndTransactionAndAssignUser(transactionID domain.TransactionID, userID string) error
+	GetTransactionItemCount(transactionID domain.TransactionID) (int, error)
 }
