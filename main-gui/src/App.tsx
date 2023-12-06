@@ -1,36 +1,64 @@
-import { createSignal } from 'solid-js';
-import solidLogo from './assets/solid.svg';
-import viteLogo from '/vite.svg';
-import './App.css';
+import axios from 'axios';
+import { Transaction } from './types/transaction';
+import { Show, createSignal } from 'solid-js';
 
 const App = () => {
-  const [count, setCount] = createSignal(0);
+  const [transaction, setTransaction] = createSignal<Transaction | null>(null);
+  const [isLoading, setIsLoading] = createSignal<boolean>(false);
+
+  const transactionStarted = () => transaction() !== null;
+
+  const handleStartTransaction = async () => {
+    setIsLoading(true);
+
+    try {
+      const url = new URL('/transactions', import.meta.env.VITE_BACKEND_URL);
+      const response = await axios.post(url.href, null, {
+        headers: {
+          Authorization: `Bearer ${import.meta.env.VITE_BACKEND_TOKEN}`,
+        },
+      });
+
+      const transactionId = response.data;
+      setTransaction({
+        id: transactionId,
+        itemCount: 0,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <>
-      <div>
-        <a href="https://vitejs.dev" target="_blank">
-          <img src={viteLogo} class="logo" alt="Vite logo" />
-        </a>
-        <a href="https://solidjs.com" target="_blank">
-          <img src={solidLogo} class="logo solid" alt="Solid logo" />
-        </a>
-      </div>
+    <div class="flex flex-col items-center justify-between min-h-screen gap-8 py-16">
+      <h1 class="text-green-600 text-4xl tracking-wide font-medium">
+        GreenWaste
+      </h1>
 
-      <h1>Vite + Solid</h1>
+      <div class="flex flex-col items-center gap-6">
+        <div
+          class="font-medium text-lg"
+          classList={{
+            visible: transactionStarted(),
+            invisible: !transactionStarted(),
+          }}
+        >
+          Please insert your plastic bottles into the machine.
+        </div>
 
-      <div class="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count()}
+        <button
+          type="button"
+          class="transition duration-300 bg-green-600 text-white px-12 py-2 rounded-md font-medium text-lg hover:-translate-y-0.5"
+          onClick={handleStartTransaction}
+        >
+          <Show when={!isLoading()} fallback={'Starting...'}>
+            Start
+          </Show>
         </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
       </div>
-      <p class="read-the-docs">
-        Click on the Vite and Solid logos to learn more
-      </p>
-    </>
+
+      <div />
+    </div>
   );
 };
 
