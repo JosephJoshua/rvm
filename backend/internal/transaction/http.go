@@ -29,9 +29,9 @@ func NewHTTPHandler(s *Service) *HTTPHandler {
 
 	r := chi.NewRouter()
 
-	r.Post("/transactions", httputils.HandlerFunc(handler.startTransaction))
-	r.Post("/transactions/{transactionID}/items", httputils.HandlerFunc(handler.addItemToTransaction))
-	r.Delete("/transactions/{transactionID}", httputils.HandlerFunc(handler.endTransactionAndAssignUser))
+	r.Post("/", httputils.HandlerFunc(handler.startTransaction))
+	r.Post("/{transactionID}/items", httputils.HandlerFunc(handler.addItemToTransaction))
+	r.Delete("/{transactionID}", httputils.HandlerFunc(handler.endTransactionAndAssignUser))
 
 	handler.Handler = r
 	return handler

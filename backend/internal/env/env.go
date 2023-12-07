@@ -1,6 +1,10 @@
 package env
 
-import "os"
+import (
+	"encoding/base64"
+	"fmt"
+	"os"
+)
 
 type AppEnv string
 
@@ -25,4 +29,18 @@ func GetDBPath() string {
 	}
 
 	return env
+}
+
+func GetFirebaseCredentialsJSON() ([]byte, error) {
+	env := os.Getenv("FIREBASE_CREDENTIALS_JSON")
+	if env == "" {
+		return nil, fmt.Errorf("GetFirebaseCredentialsJSON(): FIREBASE_CREDENTIALS_JSON not set")
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(env)
+	if err != nil {
+		return nil, fmt.Errorf("GetFirebaseCredentialsJSON(): failed to decode base64: %w", err)
+	}
+
+	return decoded, nil
 }

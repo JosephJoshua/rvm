@@ -1,2 +1,4 @@
 build
 *.db
+greenwaste-rvm-firebase*.json
+.env

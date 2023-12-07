@@ -18,6 +18,11 @@ func ValidTokenMiddleware(s *Service) func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			oplog := httplog.LogEntry(r.Context())
 
+			if r.Method == http.MethodOptions {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			authHeader := r.Header.Get("Authorization")
 			parts := strings.Split(authHeader, bearerPrefix)
 

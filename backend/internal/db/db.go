@@ -39,7 +39,7 @@ func MigrateDB(db *sqlx.DB) error {
 			user_id VARCHAR(255) PRIMARY KEY NOT NULL,
 			full_name TEXT NOT NULL,
 			email TEXT NOT NULL,
-			birth_date DATE NOT NULL
+			birth_date DATE NULL
 		) WITHOUT ROWID;
 	`); err != nil {
 		return fmt.Errorf("Migrate(): failed to migrate users: %w", err)

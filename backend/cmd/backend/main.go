@@ -12,12 +12,15 @@ import (
 	"time"
 
 	"github.com/JosephJoshua/rvm/backend/internal/apitoken"
+	"github.com/JosephJoshua/rvm/backend/internal/auth"
 	"github.com/JosephJoshua/rvm/backend/internal/db"
 	"github.com/JosephJoshua/rvm/backend/internal/env"
+	"github.com/JosephJoshua/rvm/backend/internal/firebase"
 	"github.com/JosephJoshua/rvm/backend/internal/logging"
 	"github.com/JosephJoshua/rvm/backend/internal/transaction"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/go-chi/httplog/v2"
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
@@ -25,6 +28,7 @@ import (
 
 const ReadHeaderTimeoutSecs = 3
 const GracefulTimeoutSecs = 30
+const CORSMaxAge = 300
 
 func main() {
 	loadDotEnv()
@@ -37,6 +41,7 @@ func main() {
 	dbHandle, err := db.NewDB(env.GetDBPath())
 	if err != nil {
 		slog.Default().Error("failed to initialize db", logging.ErrAttr(err))
+		return
 	}
 
 	slog.Default().Info("initialized db")
@@ -45,6 +50,7 @@ func main() {
 	slog.Default().Info("migrating db schema..")
 	if err = db.MigrateDB(dbHandle); err != nil {
 		slog.Default().Error("failed to migrate db", logging.ErrAttr(err))
+		return
 	}
 
 	slog.Default().Info("migrated db schema")
@@ -54,13 +60,26 @@ func main() {
 
 		if err = db.SeedDB(dbHandle); err != nil {
 			slog.Default().Error("failed to seed db", logging.ErrAttr(err))
+			return
 		} else {
 			slog.Default().Info("seeded db with initial data")
 		}
 	}
 
+	firebaseCreds, err := env.GetFirebaseCredentialsJSON()
+	if err != nil {
+		slog.Default().Error("failed to get firebase creds", logging.ErrAttr(err))
+		return
+	}
+
+	firebaseApp, err := firebase.NewApp(context.Background(), firebaseCreds)
+	if err != nil {
+		slog.Default().Error("failed to initialize firebase app", logging.ErrAttr(err))
+		return
+	}
+
 	server := &http.Server{
-		Handler:           getRouter(dbHandle),
+		Handler:           getRouter(dbHandle, firebaseApp),
 		Addr:              "0.0.0.0:3123",
 		ReadHeaderTimeout: ReadHeaderTimeoutSecs * time.Second,
 	}
@@ -103,14 +122,30 @@ func runServer(server *http.Server) {
 	<-serverCtx.Done()
 }
 
-func getRouter(dbHandle *sqlx.DB) http.Handler {
+func getRouter(dbHandle *sqlx.DB, firebaseApp *firebase.App) http.Handler {
 	logger := logging.NewRequestLogger(env.GetAppEnv())
 
 	r := chi.NewRouter()
 
+	r.Use(middleware.StripSlashes)
 	r.Use(httplog.RequestLogger(logger, []string{"/ping"}))
 	r.Use(middleware.Heartbeat("/ping"))
 	r.Use(middleware.SetHeader("Content-Type", "text/plain"))
+
+	r.Use(cors.Handler(cors.Options{
+		// TODO: change this to the actual frontend url
+		AllowedOrigins:   []string{"https://*", "http://*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: false,
+		MaxAge:           CORSMaxAge,
+	}))
+
+	authService := auth.NewService(
+		auth.NewSQLRepository(dbHandle),
+		auth.NewFirebaseAuthProvider(firebaseApp),
+	)
 
 	transactionService := transaction.NewService(
 		transaction.NewSQLRepository(dbHandle),
@@ -123,9 +158,13 @@ func getRouter(dbHandle *sqlx.DB) http.Handler {
 
 	transactionHandler := transaction.NewHTTPHandler(transactionService)
 
+	authHandler := auth.NewHTTPHandler(authService)
+
+	r.Mount("/auth", authHandler)
+
 	r.Group(func(r chi.Router) {
 		r.Use(apitoken.ValidTokenMiddleware(apiTokenService))
-		r.Mount("/", transactionHandler)
+		r.Mount("/transactions", transactionHandler)
 	})
 
 	return r
