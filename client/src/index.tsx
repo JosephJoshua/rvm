@@ -9,6 +9,7 @@ import SignIn from './pages/SignIn';
 import SignUp from './pages/SignUp';
 import Home from './pages/Home';
 import GuestOnlyRoutes from './components/GuestOnlyRoutes';
+import Scan from './pages/Scan';
 
 const root = document.getElementById('root');
 
@@ -23,6 +24,7 @@ render(
 
         <Route path="/" component={ProtectedRoutes}>
           <Route path="" component={Home} />
+          <Route path="scan" component={Scan} />
         </Route>
       </Routes>
     </Router>
