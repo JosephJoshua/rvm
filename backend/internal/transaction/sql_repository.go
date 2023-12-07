@@ -111,6 +111,22 @@ func (tr *SQLRepository) EndTransactionAndAssignUser(transactionID domain.Transa
 	return nil
 }
 
+func (tr *SQLRepository) IsTransactionAssigned(transactionID domain.TransactionID) (bool, error) {
+	var count int
+	if err := tr.db.Get(&count, `
+		SELECT
+			COUNT(*)
+		FROM
+			transactions
+		WHERE
+			transaction_id = ? AND user_id IS NOT NULL
+	`, transactionID); err != nil {
+		return false, fmt.Errorf("IsTransactionAssignedToUser(): failed to execute query: %w", err)
+	}
+
+	return count > 0, nil
+}
+
 func (tr *SQLRepository) GetTransactionItemCount(transactionID domain.TransactionID) (int, error) {
 	var count int
 	if err := tr.db.Get(&count, `
@@ -118,6 +134,24 @@ func (tr *SQLRepository) GetTransactionItemCount(transactionID domain.Transactio
 			COUNT(*)
 		FROM
 			transaction_items
+		WHERE
+			transaction_id = ?
+	`, transactionID); err != nil {
+		return 0, fmt.Errorf("GetTransactionItemCount(): failed to execute query: %w", err)
+	}
+
+	return count, nil
+}
+
+func (tr *SQLRepository) GetTransactionPoints(transactionID domain.TransactionID) (int, error) {
+	var count int
+	if err := tr.db.Get(&count, `
+		SELECT
+			COALESCE(SUM(items.points), 0)
+		FROM
+			transaction_items
+		LEFT JOIN
+			items ON items.item_id = transaction_items.item_id
 		WHERE
 			transaction_id = ?
 	`, transactionID); err != nil {

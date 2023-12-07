@@ -11,6 +11,12 @@ var (
 	ErrUserAlreadyExists = fmt.Errorf("user already exists")
 )
 
+type User struct {
+	ID       string
+	FullName string
+	Email    string
+}
+
 type Service struct {
 	r  Repository
 	ap AuthProvider
@@ -46,4 +52,22 @@ func (s *Service) Register(idToken string) error {
 	}
 
 	return nil
+}
+
+func (s *Service) GetUser(idToken string) (*User, error) {
+	uid, err := s.ap.GetUserID(context.Background(), idToken)
+	if err != nil {
+		return nil, fmt.Errorf("GetUser(): failed to get user ID: %w", ErrInvalidIDToken)
+	}
+
+	info, err := s.ap.GetUserInfo(context.Background(), uid)
+	if err != nil {
+		return nil, fmt.Errorf("GetUser(): failed to get user info: %w", ErrGetUserFailed)
+	}
+
+	return &User{
+		ID:       uid,
+		FullName: info.Name,
+		Email:    info.Email,
+	}, nil
 }

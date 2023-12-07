@@ -18,6 +18,7 @@ import (
 	"github.com/JosephJoshua/rvm/backend/internal/firebase"
 	"github.com/JosephJoshua/rvm/backend/internal/logging"
 	"github.com/JosephJoshua/rvm/backend/internal/transaction"
+	"github.com/JosephJoshua/rvm/backend/internal/user"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -61,9 +62,9 @@ func main() {
 		if err = db.SeedDB(dbHandle); err != nil {
 			slog.Default().Error("failed to seed db", logging.ErrAttr(err))
 			return
-		} else {
-			slog.Default().Info("seeded db with initial data")
 		}
+
+		slog.Default().Info("seeded db with initial data")
 	}
 
 	firebaseCreds, err := env.GetFirebaseCredentialsJSON()
@@ -147,6 +148,10 @@ func getRouter(dbHandle *sqlx.DB, firebaseApp *firebase.App) http.Handler {
 		auth.NewFirebaseAuthProvider(firebaseApp),
 	)
 
+	userService := user.NewService(
+		user.NewSQLRepository(dbHandle),
+	)
+
 	transactionService := transaction.NewService(
 		transaction.NewSQLRepository(dbHandle),
 		transaction.NewUUIDIDGenerator(),
@@ -157,10 +162,15 @@ func getRouter(dbHandle *sqlx.DB, firebaseApp *firebase.App) http.Handler {
 	)
 
 	transactionHandler := transaction.NewHTTPHandler(transactionService)
-
 	authHandler := auth.NewHTTPHandler(authService)
+	userHandler := user.NewHTTPHandler(userService)
 
 	r.Mount("/auth", authHandler)
+
+	r.Group(func(r chi.Router) {
+		r.Use(auth.LoggedInMiddleware(authService))
+		r.Mount("/users", userHandler)
+	})
 
 	r.Group(func(r chi.Router) {
 		r.Use(apitoken.ValidTokenMiddleware(apiTokenService))

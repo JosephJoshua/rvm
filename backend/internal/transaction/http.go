@@ -31,7 +31,7 @@ func NewHTTPHandler(s *Service) *HTTPHandler {
 
 	r.Post("/", httputils.HandlerFunc(handler.startTransaction))
 	r.Post("/{transactionID}/items", httputils.HandlerFunc(handler.addItemToTransaction))
-	r.Delete("/{transactionID}", httputils.HandlerFunc(handler.endTransactionAndAssignUser))
+	r.Post("/{transactionID}/end", httputils.HandlerFunc(handler.endTransactionAndAssignUser))
 
 	handler.Handler = r
 	return handler
@@ -138,7 +138,15 @@ func (h *HTTPHandler) endTransactionAndAssignUser(w httputils.ResponseWriter, r 
 		return
 	}
 
-	if err = h.s.EndTransactionAndAssignUser(transactionID, userID); err != nil {
+	c, err := h.s.EndTransactionAndAssignUser(transactionID, userID)
+	if err != nil {
+		if errors.Is(err, ErrTransactionAlreadyAssigned) {
+			oplog.Error("transaction is already assigned", slog.String("transaction_id", transactionIDStr))
+			w.WriteHeader(http.StatusConflict)
+
+			return
+		}
+
 		if errors.Is(err, ErrTransactionDoesNotExist) {
 			oplog.Error("transaction not found", slog.String("transaction_id", transactionID.String()))
 			w.WriteHeader(http.StatusNotFound)
@@ -166,5 +174,5 @@ func (h *HTTPHandler) endTransactionAndAssignUser(w httputils.ResponseWriter, r 
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	w.TryWrite(&oplog, []byte(strconv.Itoa(c)))
 }
